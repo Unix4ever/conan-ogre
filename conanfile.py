@@ -42,7 +42,8 @@ class OgreConan(ConanFile):
     requires = (
         "freeimage/3.17.0@hilborn/stable",
         "freetype/2.6.3@hilborn/stable",
-        "zlib/1.2.8@lasote/stable"
+        "zlib/1.2.8@lasote/stable",
+        "zziplib/0.13.59@gsage/master"
     )
     url = "http://github.com/sixten-hilborn/conan-ogre"
     license = "https://opensource.org/licenses/mit-license.php"
@@ -56,7 +57,9 @@ class OgreConan(ConanFile):
             if self.settings.os == "Linux":
                 self.options["Boost"].fPIC = True
             self.requires("Boost/1.60.0@lasote/stable")
-        if self.options.with_cg:
+        # Cg won't build on Mac OSX, it's not compatible with the latest SDK
+        # disabling it as Nvidia no longer supports it
+        if self.options.with_cg and not self.settings.os == "Macos":
             self.requires("Cg/3.1@hilborn/stable")
 
     def system_requirements(self):
@@ -89,8 +92,12 @@ class OgreConan(ConanFile):
             'OGRE_BUILD_TOOLS': False,
             'OGRE_INSTALL_PDB': False,
             'OGRE_USE_BOOST': self.options.with_boost,
-            'CMAKE_INSTALL_PREFIX:': os.path.join(os.getcwd(), self.install_path)
+            'CMAKE_INSTALL_PREFIX:': os.path.join(os.getcwd(), self.install_path),
+            'OGRE_BUILD_SAMPLES': False,
         }
+        if not self.options.shared:
+            options['OGRE_STATIC'] = 1
+
         cmake.configure(defs=options, build_dir='_build')
         cmake.build(target='install')
 
@@ -99,12 +106,16 @@ class OgreConan(ConanFile):
         include_dir = os.path.join(sdk_dir, 'include', 'OGRE')
         lib_dir = os.path.join(sdk_dir, 'lib')
         bin_dir = os.path.join(sdk_dir, 'bin')
-        self.copy(pattern="*.h", dst="include/OGRE", src=include_dir)
+        frameworks_dir = os.path.join(lib_dir, 'macosx', 'Release')
+
+        self.copy(pattern="*.h", dst="include", src=include_dir)
         self.copy("*.lib", dst="lib", src=lib_dir, keep_path=False)
         self.copy("*.a", dst="lib", src=lib_dir, keep_path=False)
         self.copy("*.so*", dst="lib", src=lib_dir, keep_path=False, links=True)
         self.copy("*.dylib", dst="lib", src=lib_dir, keep_path=False)
         self.copy("*.dll", dst="bin", src=bin_dir, keep_path=False)
+        if self.settings.os == "Macos":
+            self.copy("*.*", dst="Frameworks", src=frameworks_dir, keep_path=True)
 
     def package_info(self):
         self.cpp_info.libs = [
@@ -122,3 +133,18 @@ class OgreConan(ConanFile):
 
         if self.settings.os == 'Linux':
             self.cpp_info.libs.append('rt')
+
+        if is_apple:
+            self.cpp_info.exelinkflags.append("-framework Cocoa")
+            self.cpp_info.sharedlinkflags = self.cpp_info.exelinkflags
+
+        if not self.options.shared:
+            self.cpp_info.libs = ["{}Static".format(l) for l in self.cpp_info.libs]
+            self.cpp_info.libs.extend([
+                'RenderSystem_GLStatic',
+                'Plugin_OctreeSceneManagerStatic',
+                'Plugin_PCZSceneManagerStatic',
+                'Plugin_ParticleFXStatic',
+                'Plugin_BSPSceneManagerStatic',
+            ])
+            self.user_info.STATIC = 1

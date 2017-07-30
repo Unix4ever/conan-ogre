@@ -18,6 +18,13 @@ class DefaultNameConan(ConanFile):
     settings = "os", "compiler", "arch", "build_type"
     generators = "cmake"
     requires = "OGRE/1.9.0@%s/%s" % (username, channel)
+    options = {
+        "shared": [True, False],
+    }
+
+    default_options = (
+        "shared=True",
+    )
 
     def build(self):
         cmake = CMake(self.settings)
