@@ -62,6 +62,14 @@ class OgreConan(ConanFile):
         if self.options.with_cg and not self.settings.os == "Macos":
             self.requires("Cg/3.1@hilborn/stable")
 
+        repo = "hilborn/stable"
+
+        # hilborn/stable does not work for osx
+        if self.settings.os == "Macos":
+            repo = "gsage/master"
+
+        self.requires.add("OIS/1.3@{}".format(repo), private=False)
+
     def system_requirements(self):
         if self.settings.os == 'Linux':
             installer = SystemPackageTool()
@@ -93,10 +101,12 @@ class OgreConan(ConanFile):
             'OGRE_INSTALL_PDB': False,
             'OGRE_USE_BOOST': self.options.with_boost,
             'CMAKE_INSTALL_PREFIX:': os.path.join(os.getcwd(), self.install_path),
-            'OGRE_BUILD_SAMPLES': False,
+            'OGRE_BUILD_SAMPLES': 0,
         }
         if not self.options.shared:
             options['OGRE_STATIC'] = 1
+            if self.settings.os == "Linux":
+                options['CMAKE_SHARED_LINKER_FLAGS'] = '-Wl, --export-all-symbols'
 
         cmake.configure(defs=options, build_dir='_build')
         cmake.build(target='install')
@@ -127,13 +137,6 @@ class OgreConan(ConanFile):
             'OgreTerrain'
         ]
 
-        is_apple = (self.settings.os == 'Macos' or self.settings.os == 'iOS')
-        if self.settings.build_type == "Debug" and not is_apple:
-            self.cpp_info.libs = [lib+'_d' for lib in self.cpp_info.libs]
-
-        if self.settings.os == 'Linux':
-            self.cpp_info.libs.append('rt')
-
         if is_apple:
             self.cpp_info.exelinkflags.append("-framework Cocoa")
             self.cpp_info.sharedlinkflags = self.cpp_info.exelinkflags
@@ -148,3 +151,10 @@ class OgreConan(ConanFile):
                 'Plugin_BSPSceneManagerStatic',
             ])
             self.user_info.STATIC = 1
+
+        is_apple = (self.settings.os == 'Macos' or self.settings.os == 'iOS')
+        if self.settings.build_type == "Debug" and not is_apple:
+            self.cpp_info.libs = [lib+'_d' for lib in self.cpp_info.libs]
+
+        if self.settings.os == 'Linux':
+            self.cpp_info.libs.append('rt')
