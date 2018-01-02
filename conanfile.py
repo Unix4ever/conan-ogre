@@ -2,7 +2,7 @@ from conans import ConanFile
 import os
 import fnmatch
 import glob
-from conans.tools import get, patch, replace_in_file, SystemPackageTool
+from conans.tools import get, patch, SystemPackageTool
 from conans import CMake
 
 
@@ -21,26 +21,26 @@ def rename(pattern, name):
 
 class OgreConan(ConanFile):
     name = "OGRE"
-    version = "1.9.0"
+    version = "2.1.0"
     description = "Open Source 3D Graphics Engine"
-    folder = 'ogre-v1.9'
+    folder = 'ogre-v2.1'
     install_path = os.path.join('_build', folder, 'sdk')
     generators = "cmake"
     settings = "os", "arch", "compiler", "build_type"
     options = {
         "shared": [True, False],
-        "with_boost": [True, False],
         "with_cg": [True, False],
+        "with_metal": [True, False]
     }
     default_options = (
         "shared=True",
-        "with_boost=True",
         "with_cg=True",
+        "with_metal=False",
         "freetype:shared=False"
     )
     exports = ["CMakeLists.txt", 'patches*']
     requires = (
-        "freeimage/3.17.0@hilborn/stable",
+        "freeimage/3.17.0@gsage/master",
         "freetype/2.6.3@hilborn/stable",
         "zlib/1.2.8@lasote/stable",
         "zziplib/0.13.59@gsage/master"
@@ -53,10 +53,6 @@ class OgreConan(ConanFile):
             self.options.with_cg = False
 
     def requirements(self):
-        if self.options.with_boost:
-            if self.settings.os == "Linux":
-                self.options["Boost"].fPIC = True
-            self.requires("Boost/1.60.0@lasote/stable")
         # Cg won't build on Mac OSX, it's not compatible with the latest SDK
         # disabling it as Nvidia no longer supports it
         if self.options.with_cg and not self.settings.os == "Macos":
@@ -85,13 +81,13 @@ class OgreConan(ConanFile):
                 installer.install("libxrandr-dev:amd64")
 
     def source(self):
-        get("https://bitbucket.org/sinbad/ogre/get/v1-9.zip")
+        get("https://bitbucket.org/sinbad/ogre/get/v2-1.zip")
         rename('sinbad-ogre*', self.folder)
         apply_patches('patches', self.folder)
-        replace_in_file(
-            '{0}/Components/Overlay/CMakeLists.txt'.format(self.folder),
-            'target_link_libraries(OgreOverlay OgreMain ${FREETYPE_LIBRARIES})',
-            'target_link_libraries(OgreOverlay OgreMain ${FREETYPE_LIBRARIES} ${CONAN_LIBS_BZIP2} ${CONAN_LIBS_LIBPNG} ${CONAN_LIBS_ZLIB})')
+        #replace_in_file(
+        #    '{0}/Components/Overlay/CMakeLists.txt'.format(self.folder),
+        #    'target_link_libraries(OgreOverlay OgreMain ${FREETYPE_LIBRARIES})',
+        #    'target_link_libraries(OgreOverlay OgreMain ${FREETYPE_LIBRARIES} ${CONAN_LIBS_BZIP2} ${CONAN_LIBS_LIBPNG} ${CONAN_LIBS_ZLIB})')
 
     def build(self):
         cmake = CMake(self)
@@ -99,9 +95,9 @@ class OgreConan(ConanFile):
             'OGRE_BUILD_TESTS': False,
             'OGRE_BUILD_TOOLS': False,
             'OGRE_INSTALL_PDB': False,
-            'OGRE_USE_BOOST': self.options.with_boost,
             'CMAKE_INSTALL_PREFIX:': os.path.join(os.getcwd(), self.install_path),
             'OGRE_BUILD_SAMPLES': 0,
+            'OGRE_BUILD_RENDERSYSTEM_METAL': 1 if self.options.with_metal else 0
         }
         if not self.options.shared:
             options['OGRE_STATIC'] = 1
@@ -119,6 +115,7 @@ class OgreConan(ConanFile):
         frameworks_dir = os.path.join(lib_dir, 'macosx', 'Release')
 
         self.copy(pattern="*.h", dst="include", src=include_dir)
+        self.copy(pattern="*.inl", dst="include", src=include_dir)
         self.copy("*.lib", dst="lib", src=lib_dir, keep_path=False)
         self.copy("*.a", dst="lib", src=lib_dir, keep_path=False)
         self.copy("*.so*", dst="lib", src=lib_dir, keep_path=False, links=True)
@@ -131,12 +128,14 @@ class OgreConan(ConanFile):
         self.cpp_info.libs = [
             'OgreMain',
             'OgreOverlay',
-            'OgrePaging',
-            'OgreProperty',
-            'OgreRTShaderSystem',
-            'OgreTerrain'
+            'OgreMeshLoadGenerator',
+            'OgreHlmsPbsMobile',
+            'OgreHlmsPbs',
+            'OgreHlmsUnlitMobile',
+            'OgreHlmsUnlit',
         ]
 
+        is_apple = (self.settings.os == 'Macos' or self.settings.os == 'iOS')
         if is_apple:
             self.cpp_info.exelinkflags.append("-framework Cocoa")
             self.cpp_info.sharedlinkflags = self.cpp_info.exelinkflags
@@ -144,15 +143,12 @@ class OgreConan(ConanFile):
         if not self.options.shared:
             self.cpp_info.libs = ["{}Static".format(l) for l in self.cpp_info.libs]
             self.cpp_info.libs.extend([
-                'RenderSystem_GLStatic',
-                'Plugin_OctreeSceneManagerStatic',
-                'Plugin_PCZSceneManagerStatic',
+                'RenderSystem_GL3PlusStatic',
+                'RenderSystem_NULLStatic',
                 'Plugin_ParticleFXStatic',
-                'Plugin_BSPSceneManagerStatic',
             ])
             self.user_info.STATIC = 1
 
-        is_apple = (self.settings.os == 'Macos' or self.settings.os == 'iOS')
         if self.settings.build_type == "Debug" and not is_apple:
             self.cpp_info.libs = [lib+'_d' for lib in self.cpp_info.libs]
 
