@@ -30,20 +30,22 @@ class OgreConan(ConanFile):
     options = {
         "shared": [True, False],
         "with_cg": [True, False],
-        "with_metal": [True, False]
+        "with_metal": [True, False],
+        "hlms_type": ["desktop", "mobile"],
     }
     default_options = (
         "shared=True",
         "with_cg=True",
         "with_metal=False",
-        "freetype:shared=False"
+        "freetype:shared=False",
+        "hlms_type=desktop",
     )
     exports = ["CMakeLists.txt", 'patches*']
     requires = (
         "freeimage/3.17.0@gsage/master",
-        "freetype/2.6.3@hilborn/stable",
-        "zlib/1.2.8@lasote/stable",
-        "zziplib/0.13.59@gsage/master"
+        "freetype/2.6.3@gsage/master",
+        "zlib/1.2.11@lasote/stable",
+        "zziplib/0.13.59@gsage/master",
     )
     url = "http://github.com/sixten-hilborn/conan-ogre"
     license = "https://opensource.org/licenses/mit-license.php"
@@ -51,6 +53,9 @@ class OgreConan(ConanFile):
     def configure(self):
         if 'x86' not in str(self.settings.arch):
             self.options.with_cg = False
+
+        if self.settings.os == "Macos":
+            self.options["SDL2"].x11_video = False
 
     def requirements(self):
         # Cg won't build on Mac OSX, it's not compatible with the latest SDK
@@ -63,8 +68,6 @@ class OgreConan(ConanFile):
         # hilborn/stable does not work for osx
         if self.settings.os == "Macos":
             repo = "gsage/master"
-
-        self.requires.add("OIS/1.3@{}".format(repo), private=False)
 
     def system_requirements(self):
         if self.settings.os == 'Linux':
@@ -81,24 +84,22 @@ class OgreConan(ConanFile):
                 installer.install("libxrandr-dev:amd64")
 
     def source(self):
-        get("https://bitbucket.org/sinbad/ogre/get/v2-1.zip")
-        rename('sinbad-ogre*', self.folder)
-        apply_patches('patches', self.folder)
-        #replace_in_file(
-        #    '{0}/Components/Overlay/CMakeLists.txt'.format(self.folder),
-        #    'target_link_libraries(OgreOverlay OgreMain ${FREETYPE_LIBRARIES})',
-        #    'target_link_libraries(OgreOverlay OgreMain ${FREETYPE_LIBRARIES} ${CONAN_LIBS_BZIP2} ${CONAN_LIBS_LIBPNG} ${CONAN_LIBS_ZLIB})')
+        get("https://github.com/OGRECave/ogre/archive/v2-1.zip")
+        rename('ogre*', self.folder)
 
     def build(self):
         cmake = CMake(self)
         options = {
             'OGRE_BUILD_TESTS': False,
             'OGRE_BUILD_TOOLS': False,
-            'OGRE_INSTALL_PDB': False,
+            'OGRE_INSTALL_PDB': True,
             'CMAKE_INSTALL_PREFIX:': os.path.join(os.getcwd(), self.install_path),
-            'OGRE_BUILD_SAMPLES': 0,
-            'OGRE_BUILD_RENDERSYSTEM_METAL': 1 if self.options.with_metal else 0
+            'OGRE_BUILD_RENDERSYSTEM_METAL': 1 if self.options.with_metal else 0,
+            'CMAKE_CXX_STANDARD': 11,
+            'OGRE_BUILD_SAMPLES2': False,
+            'OGRE_DEBUG_LEVEL_DEBUG': 0,
         }
+
         if not self.options.shared:
             options['OGRE_STATIC'] = 1
             if self.settings.os == "Linux":
@@ -128,12 +129,19 @@ class OgreConan(ConanFile):
         self.cpp_info.libs = [
             'OgreMain',
             'OgreOverlay',
-            'OgreMeshLoadGenerator',
-            'OgreHlmsPbsMobile',
-            'OgreHlmsPbs',
-            'OgreHlmsUnlitMobile',
-            'OgreHlmsUnlit',
+            'OgreMeshLodGenerator',
         ]
+
+        if self.options.hlms_type == "desktop":
+            self.cpp_info.libs.extend([
+                'OgreHlmsPbs',
+                'OgreHlmsUnlit',
+            ])
+        else:
+            self.cpp_info.libs.extend([
+                'OgreHlmsPbsMobile',
+                'OgreHlmsUnlitMobile',
+            ])
 
         is_apple = (self.settings.os == 'Macos' or self.settings.os == 'iOS')
         if is_apple:
@@ -147,6 +155,9 @@ class OgreConan(ConanFile):
                 'RenderSystem_NULLStatic',
                 'Plugin_ParticleFXStatic',
             ])
+            if self.options.with_metal:
+                self.cpp_info.libs.append("RenderSystem_MetalStatic")
+
             self.user_info.STATIC = 1
 
         if self.settings.build_type == "Debug" and not is_apple:

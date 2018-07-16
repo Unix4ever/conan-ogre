@@ -30,9 +30,13 @@ class DefaultNameConan(ConanFile):
         self.options["OGRE"].shared = self.options.shared
 
     def build(self):
-        cmake = CMake(self.settings)
-        self.run('cmake %s %s' % (self.conanfile_directory, cmake.command_line))
-        self.run("cmake --build . %s" % cmake.build_config)
+        cmake = CMake(self)
+        options = {
+            'CMAKE_CXX_STANDARD': 11,
+        }
+
+        cmake.configure(defs=options, build_dir=self.conanfile_directory)
+        cmake.build(target='build')
 
     def imports(self):
         self.copy(pattern="*.dll", dst="bin", src="bin")
